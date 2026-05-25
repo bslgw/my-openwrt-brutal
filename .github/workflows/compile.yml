@@ -14,17 +14,12 @@ jobs:
       - name: Preparation environment
         run: |
           sudo apt-get update
-          # 💡 补全了解压新版 zst 格式所需要的 zstd 工具链
           sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3-setuptools rsync unzip zlib1g-dev file wget libelf-dev zstd
 
       - name: Download OpenWrt Linux 6.6 Official SDK
         run: |
-          # 💡 精确瞄准：直接使用 OpenWrt 24.10.1 官方面向 6.6 内核的稳定版 x86_64 专用 SDK（采用新版 zst 压缩格式）
           SDK_URL="https://downloads.openwrt.org/releases/24.10.1/targets/x86/generic/openwrt-sdk-24.10.1-x86-generic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          echo "正在下载 OpenWrt 24.10 官方标准工具链..."
           wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
-          
-          # 使用 zstd 完美解压
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
@@ -32,11 +27,8 @@ jobs:
         run: |
           cd sdk
           git clone https://github.com/haruue-net/openwrt-tcp-brutal.git package/tcp-brutal
-          
-          # 全局加速镜像源，防止拉取依赖卡死
           sed -i 's/git.openwrt.org\/feed\/packages.git/github.com\/openwrt\/packages.git/g' feeds.conf.default
           sed -i 's/git.openwrt.org\/project\/luci.git/github.com\/openwrt\/luci.git/g' feeds.conf.default
-          
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
@@ -53,9 +45,18 @@ jobs:
           cd sdk
           make package/tcp-brutal/compile V=s
 
+      - name: Find and Copy IPK (💡 核心修复：全盘搜寻)
+        run: |
+          mkdir -p ../output_ipk
+          # 翻箱倒柜把所有生成的 brutal ipk 统一复制到一个安全干净的独立文件夹里
+          find sdk/bin/ -name "kmod-tcp-brutal*.ipk" -exec cp {} ../output_ipk/ \;
+          echo "=================== 已成功捕获以下文件 ==================="
+          ls -la ../output_ipk/
+          echo "========================================================"
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: istoreos-tcp-brutal-ipk-6.6
-          # 💡 适配 24.10 标准架构路径
-          path: sdk/bin/targets/x86/generic/kmod-tcp-brutal*.ipk
+          # 💡 快递员直接去独立文件夹拿货，绝对不会迷路
+          path: output_ipk/kmod-tcp-brutal*.ipk
