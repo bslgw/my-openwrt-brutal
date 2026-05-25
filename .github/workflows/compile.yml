@@ -26,6 +26,7 @@ jobs:
       - name: Inject Makefile
         run: |
           mkdir -p sdk/package/tcp-brutal
+          # 💡 用文本标记代替容易出错的 Tab 缩进
           cat << 'EOF' > sdk/package/tcp-brutal/Makefile
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
@@ -47,15 +48,15 @@ PKG_MAINTAINER:=Haruue Icymoon <i@haruue.moe>
 include $(INCLUDE_DIR)/package.mk
 
 define KernelPackage/brutal
-	SECTION:=kernel
-	SUBMENU:=Network Support
-	TITLE:=TCP Brutal Kernel module
-	FILES:=$(PKG_BUILD_DIR)/brutal.$(LINUX_KMOD_SUFFIX)
-	AUTOLOAD:=$(call AutoLoad,30,brutal)
+TAB_KEYSECTION:=kernel
+TAB_KEYSUBMENU:=Network Support
+TAB_KEYTITLE:=TCP Brutal Kernel module
+TAB_KEYFILES:=$(PKG_BUILD_DIR)/brutal.$(LINUX_KMOD_SUFFIX)
+TAB_KEYAUTOLOAD:=$(call AutoLoad,30,brutal)
 endef
 
 define KernelPackage/brutal/description
-	Hysteria's congestion control algorithm ported to kernel mode TCP
+TAB_KEYHysteria's congestion control algorithm ported to kernel mode TCP
 endef
 
 include $(INCLUDE_DIR)/kernel-defaults.mk
@@ -64,11 +65,14 @@ define Build/Configure
 endef
 
 define Build/Compile
-	$(KERNEL_MAKE) M="$(PKG_BUILD_DIR)" modules
+TAB_KEY$(KERNEL_MAKE) M="$(PKG_BUILD_DIR)" modules
 endef
 
 $(eval $(call KernelPackage,brutal))
 EOF
+
+          # 💡 物理必杀：用 sed 强行将文本标记替换为真正的底色 \t (Tab键)
+          sed -i 's/TAB_KEY/\t/g' sdk/package/tcp-brutal/Makefile
 
       - name: Inject Configuration
         run: |
