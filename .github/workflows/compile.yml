@@ -1,7 +1,10 @@
-name: Build iStoreOS TCP Brutal IPK (Kernel 6.6)
+name: Build iStoreOS TCP Brutal IPK (Force Linux 6.6)
 
 on:
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # 💡 强行堵住 Node.js 20 的警告嘴
 
 jobs:
   build:
@@ -27,36 +30,50 @@ jobs:
         run: |
           cd sdk
           git clone https://github.com/haruue-net/openwrt-tcp-brutal.git package/tcp-brutal
-          sed -i 's/git.openwrt.org\/feed\/packages.git/github.com\/openwrt\/packages.git/g' feeds.conf.default
-          sed -i 's/git.openwrt.org\/project\/luci.git/github.com\/openwrt\/luci.git/g' feeds.conf.default
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
 
-      - name: Configure Pure Environment
+      - name: Overwrite SDK Config To Force Brutal
         run: |
           cd sdk
-          rm -f .config
-          touch .config
+          # 💡 核心修复：直接将 brutal 写入系统默认的核心配置文件，不给全局扫描删除的机会
+          echo "CONFIG_PACKAGE_kmod-tcp-brutal=y" >> feeds.conf.default
+          
+          # 物理注入：初始化官方最原始的核心配置模板
+          cp include/toplevel.config .config
+          
+          # 强行把默认状态改成预备编译（m = module）
           echo "CONFIG_PACKAGE_kmod-tcp-brutal=m" >> .config
-          make defconfig
+          
+          # 用极其温和的方式补全基础链，不刷新全部源
+          make oldconfig
 
-      - name: Compile IPK
+      - name: Compile IPK (Direct Target Mode)
         run: |
           cd sdk
-          make package/tcp-brutal/compile V=s
+          # 💡 核心修复：锁死独立目标进行绝对编译，忽略全局组件
+          make package/index
+          make package/tcp-brutal/compile V=s -j$(nproc)
 
-      - name: Find and Copy IPK (💡 核心修复：全盘搜寻)
+      - name: Capture and Emergency Pack IPK
         run: |
           mkdir -p ../output_ipk
-          # 翻箱倒柜把所有生成的 brutal ipk 统一复制到一个安全干净的独立文件夹里
+          
+          echo "=== 正在全盘物理搜寻编译出来的 ipk ==="
+          find sdk/bin/ -name "kmod-tcp-brutal*.ipk" || true
+          
+          # 把抓到的包复制过去
           find sdk/bin/ -name "kmod-tcp-brutal*.ipk" -exec cp {} ../output_ipk/ \;
-          echo "=================== 已成功捕获以下文件 ==================="
+          
+          # 💡 终极兜底：万一 SDK 的打包机制又犯傲娇，我们直接把现场生成的 .ko 驱动内核文件直接打包带走！
+          echo "=== 正在搜寻底层内核驱动驱动文件 .ko ==="
+          find sdk/build_dir/ -name "tcp_brutal.ko" || true
+          find sdk/build_dir/ -name "tcp_brutal.ko" -exec cp {} ../output_ipk/ \;
+          
+          echo "=== 最终移交给你的救命产物列表 ==="
           ls -la ../output_ipk/
-          echo "========================================================"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: istoreos-tcp-brutal-ipk-6.6
-          # 💡 快递员直接去独立文件夹拿货，绝对不会迷路
-          path: output_ipk/kmod-tcp-brutal*.ipk
+          path: |
+            output_ipk/*
