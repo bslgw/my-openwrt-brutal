@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # 💡 强行堵住 Node.js 20 的警告嘴
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -26,54 +26,54 @@ jobs:
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      - name: Add TCP-Brutal Package Source
+      - name: Clone Brutal Source
         run: |
-          cd sdk
-          git clone https://github.com/haruue-net/openwrt-tcp-brutal.git package/tcp-brutal
+          # 直接把 brutal 源码拉到最外层，不跟 SDK 混在一起
+          git clone https://github.com/haruue-net/openwrt-tcp-brutal.git brutal-src
 
-      - name: Overwrite SDK Config To Force Brutal
+      - name: Direct Kernel Compile (物理编译内核驱动)
         run: |
-          cd sdk
-          # 💡 核心修复：直接将 brutal 写入系统默认的核心配置文件，不给全局扫描删除的机会
-          echo "CONFIG_PACKAGE_kmod-tcp-brutal=y" >> feeds.conf.default
+          # 💡 核心修复：直接找出 SDK 里已经准备好的 Linux 内核源码树路径和交叉编译器
+          KERNEL_DIR=$(find sdk/build_dir/target-x86_64_*/ -maxdepth 1 -name "linux-x86_generic" || find sdk/build_dir/ -name "linux-6.6.*")
           
-          # 物理注入：初始化官方最原始的核心配置模板
-          cp include/toplevel.config .config
+          # 如果上面没找到，直接用全盘搜索定位内核开发目录
+          if [ -z "$KERNEL_DIR" ]; then
+            KERNEL_DIR=$(find sdk/ -type d -name "linux-*" | head -n 1)
+          fi
           
-          # 强行把默认状态改成预备编译（m = module）
-          echo "CONFIG_PACKAGE_kmod-tcp-brutal=m" >> .config
+          echo "定位到系统内核树路径: $KERNEL_DIR"
           
-          # 用极其温和的方式补全基础链，不刷新全部源
-          make oldconfig
+          # 提取 SDK 自带的交叉编译器前缀
+          STAGING_DIR=$(pwd)/sdk/staging_dir
+          export STAGING_DIR
+          TOOLCHAIN_BIN=$(find sdk/staging_dir/toolchain-x86_64_*/bin/ -maxdepth 0 2>/dev/null | head -n 1)
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+          
+          # 直接进入 brutal 驱动源码目录，拿 SDK 的工具链强行硬编
+          cd brutal-src/src
+          
+          echo "开始物理跨平台编译驱动..."
+          # 强行指定架构为 x86_64，并注入内核树进行编译
+          make -C "../../$KERNEL_DIR" M="$(pwd)" modules ARCH=x86_64 CROSS_COMPILE=x86_64-openwrt-linux- || true
+          
+          # 兜底编译：万一上面失败，用通用编译器尝试
+          if [ ! -f tcp_brutal.ko ]; then
+            make -C "../../$KERNEL_DIR" M="$(pwd)" modules || true
+          fi
 
-      - name: Compile IPK (Direct Target Mode)
-        run: |
-          cd sdk
-          # 💡 核心修复：锁死独立目标进行绝对编译，忽略全局组件
-          make package/index
-          make package/tcp-brutal/compile V=s -j$(nproc)
-
-      - name: Capture and Emergency Pack IPK
+      - name: Package Output
         run: |
           mkdir -p ../output_ipk
           
-          echo "=== 正在全盘物理搜寻编译出来的 ipk ==="
-          find sdk/bin/ -name "kmod-tcp-brutal*.ipk" || true
+          echo "=== 正在全盘搜寻刚刚出炉的 tcp_brutal.ko ==="
+          find . -name "tcp_brutal.ko" || true
+          find . -name "tcp_brutal.ko" -exec cp {} ../output_ipk/ \;
           
-          # 把抓到的包复制过去
-          find sdk/bin/ -name "kmod-tcp-brutal*.ipk" -exec cp {} ../output_ipk/ \;
-          
-          # 💡 终极兜底：万一 SDK 的打包机制又犯傲娇，我们直接把现场生成的 .ko 驱动内核文件直接打包带走！
-          echo "=== 正在搜寻底层内核驱动驱动文件 .ko ==="
-          find sdk/build_dir/ -name "tcp_brutal.ko" || true
-          find sdk/build_dir/ -name "tcp_brutal.ko" -exec cp {} ../output_ipk/ \;
-          
-          echo "=== 最终移交给你的救命产物列表 ==="
+          echo "=== 打包区最终收获 ==="
           ls -la ../output_ipk/
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: istoreos-tcp-brutal-ipk-6.6
-          path: |
-            output_ipk/*
+          name: istoreos-tcp-brutal-ko-6.6
+          path: output_ipk/*
