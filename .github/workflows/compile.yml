@@ -21,51 +21,47 @@ jobs:
 
       - name: Download OpenWrt Linux 6.6 Official SDK
         run: |
-          SDK_URL="https://downloads.openwrt.org/releases/24.10.1/targets/x86/generic/openwrt-sdk-24.10.1-x86-generic_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          # 💡 架构对齐：强行锁定 24.10.1 纯正 64 位 6.6 内核平台的通用 SDK 
+          SDK_URL="https://downloads.openwrt.org/releases/24.10.1/targets/x86/64/openwrt-sdk-24.10.1-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
       - name: Clone Brutal Source
         run: |
-          # 直接把 brutal 源码拉到最外层，不跟 SDK 混在一起
           git clone https://github.com/haruue-net/openwrt-tcp-brutal.git brutal-src
 
       - name: Direct Kernel Compile (物理编译内核驱动)
         run: |
-          # 💡 核心修复：直接找出 SDK 里已经准备好的 Linux 内核源码树路径和交叉编译器
-          KERNEL_DIR=$(find sdk/build_dir/target-x86_64_*/ -maxdepth 1 -name "linux-x86_generic" || find sdk/build_dir/ -name "linux-6.6.*")
-          
-          # 如果上面没找到，直接用全盘搜索定位内核开发目录
+          # 💡 路径对齐：定位标准的 64 位内核树开发目录
+          KERNEL_DIR=$(find sdk/build_dir/target-x86_64_*/ -type d -name "linux-6.6.*" | head -n 1)
           if [ -z "$KERNEL_DIR" ]; then
             KERNEL_DIR=$(find sdk/ -type d -name "linux-*" | head -n 1)
           fi
+          echo "正统 64 位系统内核树路径: $KERNEL_DIR"
           
-          echo "定位到系统内核树路径: $KERNEL_DIR"
-          
-          # 提取 SDK 自带的交叉编译器前缀
+          # 提取并激活 SDK 交叉编译器
           STAGING_DIR=$(pwd)/sdk/staging_dir
           export STAGING_DIR
           TOOLCHAIN_BIN=$(find sdk/staging_dir/toolchain-x86_64_*/bin/ -maxdepth 0 2>/dev/null | head -n 1)
           export PATH="$TOOLCHAIN_BIN:$PATH"
           
-          # 直接进入 brutal 驱动源码目录，拿 SDK 的工具链强行硬编
-          cd brutal-src/src
+          # 💡 核心修复：这个项目的文件全在根目录，直接进 brutal-src 
+          cd brutal-src
           
-          echo "开始物理跨平台编译驱动..."
-          # 强行指定架构为 x86_64，并注入内核树进行编译
-          make -C "../../$KERNEL_DIR" M="$(pwd)" modules ARCH=x86_64 CROSS_COMPILE=x86_64-openwrt-linux- || true
+          echo "开始进行正统 64 位跨平台物理强编..."
+          make -C "../$KERNEL_DIR" M="$(pwd)" modules ARCH=x86_64 CROSS_COMPILE=x86_64-openwrt-linux- || true
           
-          # 兜底编译：万一上面失败，用通用编译器尝试
+          # 兜底尝试
           if [ ! -f tcp_brutal.ko ]; then
-            make -C "../../$KERNEL_DIR" M="$(pwd)" modules || true
+            make -C "../$KERNEL_DIR" M="$(pwd)" modules || true
           fi
 
       - name: Package Output
         run: |
           mkdir -p ../output_ipk
           
-          echo "=== 正在全盘搜寻刚刚出炉的 tcp_brutal.ko ==="
+          echo "=== 正在全盘搜寻刚刚出炉的 64位 tcp_brutal.ko ==="
           find . -name "tcp_brutal.ko" || true
           find . -name "tcp_brutal.ko" -exec cp {} ../output_ipk/ \;
           
