@@ -1,0 +1,57 @@
+name: Build iStoreOS TCP Brutal IPK
+
+on:
+  workflow_dispatch: # 允许在网页上手动点击按钮启动编译
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Preparation environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget
+
+      - name: Download iStoreOS SDK
+        run: |
+          # 根据你的 iStoreOS 24.10.6 x86_64 匹配官方专属 SDK 路径
+          SDK_URL="https://fw.istoreos.com/24.10/x86_64/sdk/istoreos-sdk-24.10.6-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+          
+          echo "正在下载 iStoreOS 官方专属 SDK..."
+          wget -q $SDK_URL -O istoreos-sdk.tar.xz
+          tar -xJf istoreos-sdk.tar.xz
+          mv istoreos-sdk-* sdk
+
+      - name: Add TCP-Brutal Package Source
+        run: |
+          cd sdk
+          # 拉取专门为 OpenWrt/iStoreOS 封装的 tcp-brutal 源码
+          git clone https://github.com/haruue-net/openwrt-tcp-brutal.git package/tcp-brutal
+          
+          # 更新 SDK 的 Feeds 依赖
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure Package
+        run: |
+          cd sdk
+          make defconfig
+          # 强行将 kmod-tcp-brutal 标记为编译目标 (m = module)
+          echo "CONFIG_PACKAGE_kmod-tcp-brutal=m" >> .config
+          make defconfig
+
+      - name: Compile IPK
+        run: |
+          cd sdk
+          # 编译 brutal 内核模块
+          make package/tcp-brutal/compile V=s
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: istoreos-tcp-brutal-ipk
+          path: sdk/bin/targets/x86/64/kmod-tcp-brutal*.ipk
