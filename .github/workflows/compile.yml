@@ -19,14 +19,14 @@ jobs:
       - name: Download OpenWrt SDK
         run: |
           SDK_URL="https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
+          echo "正在拉取 SDK 压缩包..."
+          wget -q --tries=5 "$SDK_URL" -O openwrt-sdk.tar.zst
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
       - name: Inject Makefile
         run: |
           mkdir -p sdk/package/tcp-brutal
-          # 💡 用文本标记代替容易出错的 Tab 缩进
           cat << 'EOF' > sdk/package/tcp-brutal/Makefile
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
@@ -70,8 +70,6 @@ endef
 
 $(eval $(call KernelPackage,brutal))
 EOF
-
-          # 💡 物理必杀：用 sed 强行将文本标记替换为真正的底色 \t (Tab键)
           sed -i 's/TAB_KEY/\t/g' sdk/package/tcp-brutal/Makefile
 
       - name: Inject Configuration
