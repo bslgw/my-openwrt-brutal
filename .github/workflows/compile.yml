@@ -21,56 +21,92 @@ jobs:
 
       - name: Download OpenWrt 24.10.6 Official SDK
         run: |
-          # 💡 精准下载与你系统完全一致的 24.10.6（内核 6.6.127）官方 64位 工具链
+          # 💡 精准对接你的 6.6.127 内核平台官方 SDK
           SDK_URL="https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           echo "正在拉取 OpenWrt 24.10.6 官方工具链..."
           wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      - name: Add TCP-Brutal To Feeds (💡 标准机制)
+      - name: Create Package Struct & Inject Makefile (💡 核心修复：手写正统结构)
         run: |
-          cd sdk
-          # 将 tcp-brutal 作为标准 feed 源引入
-          echo "src-git brutal_feed https://github.com/haruue-net/openwrt-tcp-brutal.git" >> feeds.conf.default
+          # 创建标准的本地包目录
+          mkdir -p sdk/package/tcp-brutal
           
-          # 规避可能卡死的官方源
-          sed -i 's/git.openwrt.org\/feed\/packages.git/github.com\/openwrt\/packages.git/g' feeds.conf.default
-          sed -i 's/git.openwrt.org\/project\/luci.git/github.com\/openwrt\/luci.git/g' feeds.conf.default
-          
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          # 将你找到的黄金 Makefile 完美写入系统
+          cat << 'EOF' > sdk/package/tcp-brutal/Makefile
+          include $(TOPDIR)/rules.mk
+          include $(INCLUDE_DIR)/kernel.mk
 
-      - name: Inject Configuration (💡 核心修复)
+          PKG_NAME:=tcp-brutal
+          PKG_VERSION:=1.0.3
+          PKG_RELEASE:=1
+
+          PKG_URL:=https://github.com/apernet/tcp-brutal
+          PKG_SOURCE_URL:=$(PKG_URL).git
+          PKG_SOURCE_PROTO:=git
+          PKG_SOURCE_VERSION:=v$(PKG_VERSION)
+          PKG_SOURCE_DATE:=2024-07-30
+          PKG_MIRROR_HASH:=0c7f5581da3bc5726bfd36a1f4863f77ca9a2684449d4b1d416577557b3d6f92
+          PKG_LICENSE:=GPL-3.0
+
+          PKG_MAINTAINER:=Haruue Icymoon <i@haruue.moe>
+
+          include $(INCLUDE_DIR)/package.mk
+
+          define KernelPackage/brutal
+            SECTION:=kernel
+            SUBMENU:=Network Support
+            TITLE:=TCP Brutal Kernel module
+            FILES:=$(PKG_BUILD_DIR)/brutal.$(LINUX_KMOD_SUFFIX)
+            AUTOLOAD:=$(call AutoLoad,30,brutal)
+          endef
+
+          define KernelPackage/brutal/description
+            Hysteria's congestion control algorithm ported to kernel mode TCP
+          endef
+
+          include $(INCLUDE_DIR)/kernel-defaults.mk
+
+          define Build/Configure
+          endef
+
+          define Build/Compile
+	          $(KERNEL_MAKE) M="$(PKG_BUILD_DIR)" modules
+          endef
+
+          $(eval $(call KernelPackage,brutal))
+          EOF
+
+      - name: Inject Configuration
         run: |
           cd sdk
-          # 1. 先生存一份基础的官方标准配置
+          # 1. 初始化标准结构
           make defconfig
           
-          # 2. 强行把 brutal 以及它所依赖的全部内核网络组件一同打包激活
-          echo "CONFIG_PACKAGE_kmod-tcp-brutal=m" >> .config
-          echo "CONFIG_PACKAGE_kmod-tcp-congestion-advanced=y" >> .config
+          # 2. 💡 核心修正：根据 Makefile 第 53 行，真正激活它的名字是 CONFIG_PACKAGE_kmod-brutal
+          echo "CONFIG_PACKAGE_kmod-brutal=m" >> .config
           
-          # 3. 使用 olddefconfig 强制锁定，不给系统在 defconfig 时抹除的机会
+          # 3. 强行锁定依赖树
           make olddefconfig
 
-      - name: Compile IPK
+      - name: Compile IPK (Direct Target Mode)
         run: |
           cd sdk
-          # 强行独立编译该模块
-          make package/openwrt-tcp-brutal/compile V=s -j$(nproc)
+          # 💡 核心修正：编译目标必须与真正的文件夹和配置名称完美吻合
+          make package/tcp-brutal/compile V=s -j$(nproc)
 
-      - name: Collect and Protect Output Files
+      - name: Collect Output Files
         run: |
           mkdir -p ../output_artifacts
           
-          echo "=== 正在全盘搜寻 24.10.6 编译导出的 IPK 安装包 ==="
-          find sdk/bin/ -name "*tcp-brutal*.ipk" -exec cp {} ../output_artifacts/ \; || true
+          echo "=== 正在全盘搜寻编译出的正规 IPK 安装包 ==="
+          find sdk/bin/ -name "*brutal*.ipk" -exec cp {} ../output_artifacts/ \; || true
           
-          echo "=== 正在深度打捞编译生成的 .ko 内核模块文件（双保险） ==="
-          find sdk/build_dir/ -name "*tcp_brutal*.ko" -exec cp {} ../output_artifacts/ \; || true
+          echo "=== 正在全盘打捞生成的底层内核驱动 .ko 文件 ==="
+          find sdk/build_dir/ -name "*brutal*.ko" -exec cp {} ../output_artifacts/ \; || true
           
-          echo "=== 打包区最终斩获情况 ==="
+          echo "=== 打包区最终大获全胜的产物列表 ==="
           ls -la ../output_artifacts/
 
       - name: Upload Artifacts
