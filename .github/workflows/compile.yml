@@ -1,4 +1,4 @@
-name: Build iStoreOS TCP Brutal IPK (Full Source Mode)
+name: Build iStoreOS TCP Brutal IPK (Official 24.10.6)
 
 on:
   workflow_dispatch:
@@ -19,56 +19,62 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3-setuptools rsync unzip zlib1g-dev file wget libelf-dev zstd
 
-      - name: Clone Full OpenWrt 24.10 Source
+      - name: Download OpenWrt 24.10.6 Official SDK
         run: |
-          # 直接拉取官方 24.10 完整源码，拒绝残缺 SDK
-          git clone -b openwrt-24.10 --single-branch https://github.com/openwrt/openwrt.git openwrt-source
+          # 💡 精准下载与你系统完全一致的 24.10.6（内核 6.6.127）官方 64位 工具链
+          SDK_URL="https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          echo "正在拉取 OpenWrt 24.10.6 官方工具链..."
+          wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
+          tar -I zstd -xf openwrt-sdk.tar.zst
+          mv openwrt-sdk-* sdk
 
-      - name: Add TCP-Brutal Package Source
+      - name: Add TCP-Brutal To Feeds (💡 标准机制)
         run: |
-          cd openwrt-source
-          # 将 tcp-brutal 源码拉入正规的 package 目录
-          git clone https://github.com/haruue-net/openwrt-tcp-brutal.git package/tcp-brutal
+          cd sdk
+          # 将 tcp-brutal 作为标准 feed 源引入
+          echo "src-git brutal_feed https://github.com/haruue-net/openwrt-tcp-brutal.git" >> feeds.conf.default
           
-          # 更新并安装完整树依赖
+          # 规避可能卡死的官方源
+          sed -i 's/git.openwrt.org\/feed\/packages.git/github.com\/openwrt\/packages.git/g' feeds.conf.default
+          sed -i 's/git.openwrt.org\/project\/luci.git/github.com\/openwrt\/luci.git/g' feeds.conf.default
+          
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Inject Complete Kernel Config
+      - name: Inject Configuration (💡 核心修复)
         run: |
-          cd openwrt-source
-          # 1. 强行锁定为标准的 x86_64 平台架构
-          echo "CONFIG_TARGET_x86=y" > .config
-          echo "CONFIG_TARGET_x86_64=y" >> .config
-          echo "CONFIG_TARGET_x86_64_DEVICE_generic=y" >> .config
-          
-          # 2. 注入我们的 brutal 模块
-          echo "CONFIG_PACKAGE_kmod-tcp-brutal=m" >> .config
-          
-          # 3. 让完整源码树去自动补全所有缺失的依赖
+          cd sdk
+          # 1. 先生存一份基础的官方标准配置
           make defconfig
+          
+          # 2. 强行把 brutal 以及它所依赖的全部内核网络组件一同打包激活
+          echo "CONFIG_PACKAGE_kmod-tcp-brutal=m" >> .config
+          echo "CONFIG_PACKAGE_kmod-tcp-congestion-advanced=y" >> .config
+          
+          # 3. 使用 olddefconfig 强制锁定，不给系统在 defconfig 时抹除的机会
+          make olddefconfig
 
-      - name: Compile IPK (Full Tree Mode)
+      - name: Compile IPK
         run: |
-          cd openwrt-source
-          # 仅编译针对我们的独立驱动包及其底层依赖，由于源码完整，绝对能成功生成
-          make package/tcp-brutal/compile V=s -j$(nproc)
+          cd sdk
+          # 强行独立编译该模块
+          make package/openwrt-tcp-brutal/compile V=s -j$(nproc)
 
-      - name: Collect Output Files
+      - name: Collect and Protect Output Files
         run: |
           mkdir -p ../output_artifacts
           
-          echo "=== 正在完整源码树中搜寻生成的 ipk ==="
-          find openwrt-source/bin/ -name "*tcp-brutal*.ipk" -exec cp {} ../output_artifacts/ \; || true
+          echo "=== 正在全盘搜寻 24.10.6 编译导出的 IPK 安装包 ==="
+          find sdk/bin/ -name "*tcp-brutal*.ipk" -exec cp {} ../output_artifacts/ \; || true
           
-          echo "=== 正在深度搜寻内核驱动文件 .ko 作为备用 ==="
-          find openwrt-source/build_dir/ -name "*tcp_brutal*.ko" -exec cp {} ../output_artifacts/ \; || true
+          echo "=== 正在深度打捞编译生成的 .ko 内核模块文件（双保险） ==="
+          find sdk/build_dir/ -name "*tcp_brutal*.ko" -exec cp {} ../output_artifacts/ \; || true
           
-          echo "=== 最终大获全胜的产物列表 ==="
+          echo "=== 打包区最终斩获情况 ==="
           ls -la ../output_artifacts/
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: istoreos-tcp-brutal-full-package
+          name: istoreos-tcp-brutal-24.10.6
           path: output_artifacts/*
