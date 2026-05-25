@@ -21,86 +21,86 @@ jobs:
 
       - name: Download OpenWrt 24.10.6 Official SDK
         run: |
-          # 💡 精准对接你的 6.6.127 内核平台官方 SDK
+          # 💡 精准对接 6.6.127 内核平台的通用 x86_64 官方 SDK
           SDK_URL="https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           echo "正在拉取 OpenWrt 24.10.6 官方工具链..."
           wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      - name: Create Package Struct & Inject Makefile (💡 核心修复：手写正统结构)
+      - name: Inject Gold Makefile (💡 核心修复：直接原地生成你的 Makefile)
         run: |
-          # 创建标准的本地包目录
+          # 在 SDK 内部创建标准的 package 结构目录
           mkdir -p sdk/package/tcp-brutal
           
-          # 将你找到的黄金 Makefile 完美写入系统
+          # 将你提供的 Makefile 原封不动写入，注意 Build/Compile 的 Tab 键已被严格处理
           cat << 'EOF' > sdk/package/tcp-brutal/Makefile
-          include $(TOPDIR)/rules.mk
-          include $(INCLUDE_DIR)/kernel.mk
+include $(TOPDIR)/rules.mk
+include $(INCLUDE_DIR)/kernel.mk
 
-          PKG_NAME:=tcp-brutal
-          PKG_VERSION:=1.0.3
-          PKG_RELEASE:=1
+PKG_NAME:=tcp-brutal
+PKG_VERSION:=1.0.3
+PKG_RELEASE:=1
 
-          PKG_URL:=https://github.com/apernet/tcp-brutal
-          PKG_SOURCE_URL:=$(PKG_URL).git
-          PKG_SOURCE_PROTO:=git
-          PKG_SOURCE_VERSION:=v$(PKG_VERSION)
-          PKG_SOURCE_DATE:=2024-07-30
-          PKG_MIRROR_HASH:=0c7f5581da3bc5726bfd36a1f4863f77ca9a2684449d4b1d416577557b3d6f92
-          PKG_LICENSE:=GPL-3.0
+PKG_URL:=https://github.com/apernet/tcp-brutal
+PKG_SOURCE_URL:=$(PKG_URL).git
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_VERSION:=v$(PKG_VERSION)
+PKG_SOURCE_DATE:=2024-07-30
+PKG_MIRROR_HASH:=0c7f5581da3bc5726bfd36a1f4863f77ca9a2684449d4b1d416577557b3d6f92
+PKG_LICENSE:=GPL-3.0
 
-          PKG_MAINTAINER:=Haruue Icymoon <i@haruue.moe>
+PKG_MAINTAINER:=Haruue Icymoon <i@haruue.moe>
 
-          include $(INCLUDE_DIR)/package.mk
+include $(INCLUDE_DIR)/package.mk
 
-          define KernelPackage/brutal
-            SECTION:=kernel
-            SUBMENU:=Network Support
-            TITLE:=TCP Brutal Kernel module
-            FILES:=$(PKG_BUILD_DIR)/brutal.$(LINUX_KMOD_SUFFIX)
-            AUTOLOAD:=$(call AutoLoad,30,brutal)
-          endef
+define KernelPackage/brutal
+	SECTION:=kernel
+	SUBMENU:=Network Support
+	TITLE:=TCP Brutal Kernel module
+	FILES:=$(PKG_BUILD_DIR)/brutal.$(LINUX_KMOD_SUFFIX)
+	AUTOLOAD:=$(call AutoLoad,30,brutal)
+endef
 
-          define KernelPackage/brutal/description
-            Hysteria's congestion control algorithm ported to kernel mode TCP
-          endef
+define KernelPackage/brutal/description
+	Hysteria's congestion control algorithm ported to kernel mode TCP
+endef
 
-          include $(INCLUDE_DIR)/kernel-defaults.mk
+include $(INCLUDE_DIR)/kernel-defaults.mk
 
-          define Build/Configure
-          endef
+define Build/Configure
+endef
 
-          define Build/Compile
-	          $(KERNEL_MAKE) M="$(PKG_BUILD_DIR)" modules
-          endef
+define Build/Compile
+	$(KERNEL_MAKE) M="$(PKG_BUILD_DIR)" modules
+endef
 
-          $(eval $(call KernelPackage,brutal))
-          EOF
+$(eval $(call KernelPackage,brutal))
+EOF
 
       - name: Inject Configuration
         run: |
           cd sdk
-          # 1. 初始化标准结构
+          # 1. 先生存一份基础的官方标准配置骨架
           make defconfig
           
-          # 2. 💡 核心修正：根据 Makefile 第 53 行，真正激活它的名字是 CONFIG_PACKAGE_kmod-brutal
+          # 2. 💡 核心修正：根据你提供的 Makefile 第 21 行，决定编译它的开关叫 kmod-brutal
           echo "CONFIG_PACKAGE_kmod-brutal=m" >> .config
           
-          # 3. 强行锁定依赖树
+          # 3. 强行补全所有隐性依赖，绝不给系统抹除的机会
           make olddefconfig
 
       - name: Compile IPK (Direct Target Mode)
         run: |
           cd sdk
-          # 💡 核心修正：编译目标必须与真正的文件夹和配置名称完美吻合
+          # 💡 核心修正：编译指定的目标文件夹
           make package/tcp-brutal/compile V=s -j$(nproc)
 
       - name: Collect Output Files
         run: |
           mkdir -p ../output_artifacts
           
-          echo "=== 正在全盘搜寻编译出的正规 IPK 安装包 ==="
+          echo "=== 正在全盘搜寻编译出的 6.6.127 架构 IPK 安装包 ==="
           find sdk/bin/ -name "*brutal*.ipk" -exec cp {} ../output_artifacts/ \; || true
           
           echo "=== 正在全盘打捞生成的底层内核驱动 .ko 文件 ==="
