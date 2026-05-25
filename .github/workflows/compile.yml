@@ -1,10 +1,7 @@
-name: Build iStoreOS TCP Brutal IPK (Official 24.10.6)
+name: Build-Brutal-IPK
 
 on:
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -19,21 +16,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3-setuptools rsync unzip zlib1g-dev file wget libelf-dev zstd
 
-      - name: Download OpenWrt 24.10.6 Official SDK
+      - name: Download OpenWrt SDK
         run: |
-          # 💡 精准对接 6.6.127 内核平台的通用 x86_64 官方 SDK
           SDK_URL="https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          echo "正在拉取 OpenWrt 24.10.6 官方工具链..."
           wget -q --tries=5 $SDK_URL -O openwrt-sdk.tar.zst
           tar -I zstd -xf openwrt-sdk.tar.zst
           mv openwrt-sdk-* sdk
 
-      - name: Inject Gold Makefile (💡 核心修复：直接原地生成你的 Makefile)
+      - name: Inject Makefile
         run: |
-          # 在 SDK 内部创建标准的 package 结构目录
           mkdir -p sdk/package/tcp-brutal
-          
-          # 将你提供的 Makefile 原封不动写入，注意 Build/Compile 的 Tab 键已被严格处理
           cat << 'EOF' > sdk/package/tcp-brutal/Makefile
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
@@ -81,33 +73,20 @@ EOF
       - name: Inject Configuration
         run: |
           cd sdk
-          # 1. 先生存一份基础的官方标准配置骨架
           make defconfig
-          
-          # 2. 💡 核心修正：根据你提供的 Makefile 第 21 行，决定编译它的开关叫 kmod-brutal
           echo "CONFIG_PACKAGE_kmod-brutal=m" >> .config
-          
-          # 3. 强行补全所有隐性依赖，绝不给系统抹除的机会
           make olddefconfig
 
-      - name: Compile IPK (Direct Target Mode)
+      - name: Compile IPK
         run: |
           cd sdk
-          # 💡 核心修正：编译指定的目标文件夹
           make package/tcp-brutal/compile V=s -j$(nproc)
 
       - name: Collect Output Files
         run: |
           mkdir -p ../output_artifacts
-          
-          echo "=== 正在全盘搜寻编译出的 6.6.127 架构 IPK 安装包 ==="
           find sdk/bin/ -name "*brutal*.ipk" -exec cp {} ../output_artifacts/ \; || true
-          
-          echo "=== 正在全盘打捞生成的底层内核驱动 .ko 文件 ==="
           find sdk/build_dir/ -name "*brutal*.ko" -exec cp {} ../output_artifacts/ \; || true
-          
-          echo "=== 打包区最终大获全胜的产物列表 ==="
-          ls -la ../output_artifacts/
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
