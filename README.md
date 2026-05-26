@@ -2,13 +2,21 @@
 记录一系列瞎折腾
 
 1、本地系统
+
 iStoreOS 24.10.6 2026041710（内核：6.6.127） X86
+
 下载brutal插件：https://github.com/phuslu/tcp-brutal/releases/tag/v1.0.1
+
 选择brutal_linux_amd64
+
 上传到openwrt，赋予运行权限，并运行。
+
 本地安装sing-box 最新版
+
 修改节点对应的配置文件
+
 "flow": "",
+
 "multiplex": {
         "enabled": true,
         "protocol": "smux",
