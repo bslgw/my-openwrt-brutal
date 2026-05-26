@@ -29,11 +29,17 @@ iStoreOS 24.10.6 2026041710（内核：6.6.127） X86
         "down_mbps": 50   #自行修改
         }
       }
+
 2、服务器VPS
+
 X86的VPS，使用八合一脚本中的，安装bbr选项，进入选择编译安装brutal
+
 服务器端使用八合一脚本安装sing-box
+
 sing-box配置所在目录 /etc/v2ray-agent/sing-box/conf/config
+
 编辑vless节点配置
+
 "flow": "", 
 ....  ....
  "multiplex": {
@@ -47,9 +53,13 @@ sing-box配置所在目录 /etc/v2ray-agent/sing-box/conf/config
       }
 
 备注：
+
 1、openwrt必须安装brutal
+
 2、singbox的配置文件必须"flow": "", 
+
 3、客户端/服务器端 设置上传下载速度，且要对等
+
 结论：对于甲骨文的免费VPS 没啥卵用
 
           
